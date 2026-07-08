@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>SK Attendance Manager</title>
+
+    <style>
+        body {
+            margin: 0;
+            font-family: Arial;
+            background: #eef5fb;
+            color: #102a43;
+        }
+
+        header {
+            padding: 20px;
+            background: linear-gradient(120deg, #102a43, #1677ff);
+            color: #fff;
+            font-size: 24px;
+            font-weight: bold;
+        }
+
+        .wrap {
+            max-width: 1050px;
+            margin: auto;
+            padding: 18px;
+        }
+
+        .box,
+        .company {
+            background: #fff;
+            padding: 16px;
+            border-radius: 14px;
+            margin: 12px 0;
+            box-shadow: 0 5px 18px #1232;
+        }
+
+        .company {
+            border-left: 5px solid #1677ff;
+            cursor: pointer;
+        }
+
+        input,
+        select,
+        button {
+            padding: 11px;
+            margin: 4px;
+            border-radius: 8px;
+            border: 1px solid #cbd8e6;
+            font-size: 15px;
+        }
+
+        button {
+            border: 0;
+            background: #1677ff;
+            color: #fff;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .red {
+            background: #db3d47
+        }
+
+        .green {
+            background: #139b63
+        }
+
+        .orange {
+            background: #e98a00
+        }
+
+        .hidden {
+            display: none !important
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 6px;
+        }
+
+        .day {
+            min-height: 72px;
+            border: 1px solid #d7e5f5;
+            border-radius: 10px;
+            padding: 6px;
+            cursor: pointer;
+            background: #fbfdff;
+        }
+
+        .tag {
+            font-size: 11px;
+            background: #d9f6e7;
+            color: #087348;
+            padding: 4px;
+            border-radius: 5px;
+            margin-top: 4px;
+        }
+
+        .modal {
+            position: fixed;
+            inset: 0;
+            background: #0008;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal .box {
+            width: 90%;
+            max-width: 420px;
+        }
+
+        .summary {
+            background: #102a43;
+            color: #fff;
+            line-height: 1.8;
+        }
+
+        @media(max-width:600px) {
+
+            input,
+            select,
+            button {
+                width: 100%;
+                margin: 4px 0;
+            }
+
+            .day {
+                min-height: 55px;
+                font-size: 12px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <header>ⓈⓀ SK Attendance Manager</header>
+
+    <div class="wrap">
+
+        <section id="home">
+            <div class="box">
+                <input id="cn" placeholder="Company Name">
+                <input id="ms" type="number" placeholder="Monthly Salary ₹">
+                <input id="or" type="number" placeholder="OT ₹ per Hour">
+                <button id="create">Create Company Folder</button>
+            </div>
+
+            <div id="companies"></div>
+        </section>
+
+        <section id="work" class="hidden">
+            <button id="back">← Back</button>
+            <h2 id="title"></h2>
+
+            <select id="year"></select>
+            <select id="month"></select>
+            <button id="slip">Download Salary Slip</button>
+
+            <div id="summary" class="box summary"></div>
+
+            <div class="box">
+                <div id="calendar" class="grid"></div>
+            </div>
+        </section>
+
+    </div>
+
+    <div id="modal" class="modal hidden">
+        <div class="box">
+            <h3 id="dateText"></h3>
+
+            <button id="present" class="green">Present</button>
+            <button id="absent" class="red">Absent</button>
+            <button id="weekoff">Week Off</button>
+            <button id="ot" class="orange">Overtime</button>
+            <button id="lunch">Lunch Deduction</button>
+
+            <input id="hours" type="number" step="0.5" placeholder="OT hours then Enter">
+
+            <br>
+
+            <button id="cancel" class="red">Cancel</button>
+        </div>
+    </div>
+
+    <script>
+        (function () {
+
+            const q = id => document.getElementById(id);
+
+            const months = [
+                "January", "February", "March", "April", "May", "June",
+                "July", "August", "September", "October", "November", "December"
+            ];
+
+            let company = "";
+            let dateKey = "";
+            let status = "";
+            let overtime = false;
+
+            const read = () => JSON.parse(localStorage.getItem("SK_AM_V2") || "{}");
+
+            const write = data => {
+                localStorage.setItem("SK_AM_V2", JSON.stringify(data));
+            };
+
+            function companies() {
+
+                let data = read();
+                let output = q("companies");
+
+                output.innerHTML = "";
+
+                let keys = Object.keys(data);
+
+                if (!keys.length) {
+                    output.innerHTML = "<div class='box'>No company folder yet.</div>";
+                    return;
+                }
+
+                keys.forEach(name => {
+
+                    let card = document.createElement("div");
+
+                    card.className = "company";
+
+                    card.innerHTML =
+                        "<b>📁 " + name + "</b><br>" +
+                        "Salary ₹" + data[name].salary +
+                        " | OT ₹" + data[name].rate + "/Hr<br>" +
+                        "<button class='red'>Delete Company Folder</button>";
+
+                    card.onclick = function (event) {
+
+                        if (event.target.tagName === "BUTTON") {
+
+                            if (confirm("Delete " + name + " and all attendance?")) {
+                                let all = read();
+                                delete all[name];
+                                write(all);
+                                companies();
+                            }
+
+                            return;
+                        }
+
+                        open(name);
+                    };
+
+                    output.appendChild(card);
+                });
+            }
+
+            q("create").onclick = function () {
+
+                let name = q("cn").value.trim();
+                let salary = Number(q("ms").value);
+                let rate = Number(q("or").value);
+
+                if (!name || salary <= 0 || rate < 0) {
+                    alert("Company name, monthly salary aur OT rate bharo.");
+                    return;
+                }
+
+                let data = read();
+
+                if (data[name]) {
+                    alert("Company already exists.");
+                    return;
+                }
+
+                data[name] = {
+                    salary: salary,
+                    rate: rate,
+                    records: {}
+                };
+
+                write(data);
+
+                q("cn").value = "";
+                q("ms").value = "";
+                q("or").value = "";
+
+                companies();
+            };
+
+            function open(name) {
+
+                company = name;
+
+                q("home").classList.add("hidden");
+                q("work").classList.remove("hidden");
+
+                q("title").textContent = "📁 " + name;
+
+                q("year").innerHTML = "";
+
+                for (let year = 2023; year <= 2035; year++) {
+                    q("year").innerHTML += "<option>" + year + "</option>";
+                }
+
+                q("month").innerHTML = months.map((month, index) => {
+                    return "<option value='" + index + "'>" + month + "</option>";
+                }).join("");
+
+                q("year").value = new Date().getFullYear();
+                q("month").value = new Date().getMonth();
+
+                draw();
+            }
+
+            q("back").onclick = function () {
+                q("work").classList.add("hidden");
+                q("home").classList.remove("hidden");
+                companies();
+            };
+
+            q("year").onchange = draw;
+            q("month").onchange = draw;
+
+            function draw() {
+
+                let year = Number(q("year").value);
+                let month = Number(q("month").value);
+
+                let records = read()[company].records;
+
+                let firstDay = new Date(year, month, 1).getDay();
+                let lastDay = new Date(year, month + 1, 0).getDate();
+
+                let html = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+                    .map(day => "<b>" + day + "</b>")
+                    .join("");
+
+                for (let i = 0; i < firstDay; i++) {
+                    html += "<div></div>";
+                }
+
+                for (let day = 1; day <= lastDay; day++) {
+
+                    let key =
+                        year + "-" +
+                        String(month + 1).padStart(2, "0") + "-" +
+                        String(day).padStart(2, "0");
+
+                    let record = records[key] || {};
+
+                    html +=
+                        "<div class='day' data-k='" + key + "'>" +
+                        "<b>" + day + "</b>" +
+                        (record.status ? "<div class='tag'>" + record.status + "</div>" : "") +
+                        (record.ot ? "<div class='tag'>OT " + record.ot + " Hr</div>" : "") +
+                        (record.lunch ? "<div class='tag'>Lunch -₹" + record.lunch + "</div>" : "") +
+                        "</div>";
+                }
+
+                q("calendar").innerHTML = html;
+
+                document.querySelectorAll(".day").forEach(box => {
+                    box.onclick = function () {
+                        popup(box.dataset.k);
+                    };
+                });
+
+                summary();
+            }
+
+            function popup(key) {
+
+                dateKey = key;
+
+                let record = read()[company].records[key] || {};
+
+                status = record.status || "";
+                overtime = !!record.ot;
+
+                q("hours").value = record.ot || "";
+
+                q("dateText").textContent = "Attendance: " + key;
+
+                q("modal").classList.remove("hidden");
+            }
+
+            function save() {
+
+                let data = read();
+                let old = data[company].records[dateKey] || {};
+
+                data[company].records[dateKey] = {
+                    status: status,
+                    ot: overtime ? (Number(q("hours").value) || 0) : 0,
+                    lunch: old.lunch || 0
+                };
+
+                write(data);
+
+                q("modal").classList.add("hidden");
+
+                draw();
+            }
+
+            q("present").onclick = function () {
+                status = "Present";
+                overtime = false;
+                save();
+            };
+
+            q("absent").onclick = function () {
+                status = "Absent";
+                overtime = false;
+                save();
+            };
+
+            q("weekoff").onclick = function () {
+                status = "Week Off";
+                overtime = false;
+                save();
+            };
+
+            q("ot").onclick = function () {
+                status = "Present";
+                overtime = true;
+                q("hours").focus();
+            };
+
+            q("hours").onkeydown = function (event) {
+
+                if (event.key === "Enter") {
+
+                    if (Number(q("hours").value) > 0) {
+                        save();
+                    } else {
+                        alert("OT hours enter karo.");
+                    }
+                }
+            };
+
+            q("lunch").onclick = function () {
+
+                let amount = prompt(
+                    "Lunch deduction amount ₹ enter karo, example 22",
+                    ""
+                );
+
+                if (amount === null) return;
+
+                amount = Number(amount);
+
+                if (!amount || amount < 0) {
+                    alert("Sahi amount enter karo.");
+                    return;
+                }
+
+                let data = read();
+                let old = data[company].records[dateKey] || {};
+
+                data[company].records[dateKey] = {
+                    status: old.status || status || "Present",
+                    ot: old.ot || 0,
+                    lunch: amount
+                };
+
+                write(data);
+
+                q("modal").classList.add("hidden");
+
+                draw();
+            };
+
+            q("cancel").onclick = function () {
+                q("modal").classList.add("hidden");
+            };
+
+            function calc() {
+
+                let data = read()[company];
+
+                let prefix =
+                    q("year").value + "-" +
+                    String(Number(q("month").value) + 1).padStart(2, "0") + "-";
+
+                let present = 0;
+                let absent = 0;
+                let weekOff = 0;
+                let otHours = 0;
+                let lunch = 0;
+
+                Object.entries(data.records).forEach(([key, record]) => {
+
+                    if (!key.startsWith(prefix)) return;
+
+                    if (record.status === "Present") present++;
+
+                    if (record.status === "Absent") absent++;
+
+                    if (record.status === "Week Off") weekOff++;
+
+                    otHours += Number(record.ot || 0);
+
+                    lunch += Number(record.lunch || 0);
+                });
+
+                let totalDays = new Date(
+                    Number(q("year").value),
+                    Number(q("month").value) + 1,
+                    0
+                ).getDate();
+
+                let dailySalary = data.salary / totalDays;
+
+                /* Week Off is paid like Present */
+                let paidDays = present + weekOff;
+
+                let baseSalary = dailySalary * paidDays;
+
+                let otAmount = otHours * data.rate;
+
+                let finalSalary = baseSalary + otAmount - lunch;
+
+                return {
+                    present,
+                    absent,
+                    weekOff,
+                    otHours,
+                    lunch,
+                    totalDays,
+                    dailySalary,
+                    paidDays,
+                    baseSalary,
+                    otAmount,
+                    finalSalary
+                };
+            }
+
+            function summary() {
+
+                let result = calc();
+
+                q("summary").innerHTML =
+                    "Total Days: " + result.totalDays + "<br>" +
+                    "Present: " + result.present +
+                    " | Week Off (Paid): " + result.weekOff +
+                    " | Absent: " + result.absent + "<br>" +
+                    "Paid Days: " + result.paidDays +
+                    " | Daily Salary: ₹" + result.dailySalary.toFixed(2) + "<br>" +
+                    "Base Salary: ₹" + result.baseSalary.toFixed(2) + "<br>" +
+                    "OT: " + result.otHours +
+                    " Hr | OT Amount: ₹" + result.otAmount.toFixed(2) + "<br>" +
+                    "Lunch Deduction: ₹" + result.lunch.toFixed(2) + "<br>" +
+                    "<b>Final Salary: ₹" + result.finalSalary.toFixed(2) + "</b>";
+            }
+
+            q("slip").onclick = function () {
+
+                let result = calc();
+
+                let text =
+                    `SK SALARY SLIP
+
+Company: ${company}
+Month: ${months[q("month").value]} ${q("year").value}
+
+Present: ${result.present}
+Week Off (Paid): ${result.weekOff}
+Absent: ${result.absent}
+OT Hours: ${result.otHours}
+Lunch Deduction: ₹${result.lunch}
+
+FINAL SALARY: ₹${result.finalSalary.toFixed(2)}
+`;
+
+                let blob = new Blob([text], { type: "text/plain" });
+
+                let url = URL.createObjectURL(blob);
+
+                let link = document.createElement("a");
+
+                link.href = url;
+                link.download = company + "-Salary-Slip.txt";
+
+                link.click();
+
+                setTimeout(() => URL.revokeObjectURL(url), 1000);
+            };
+
+            companies();
+
+        })();
+    </script>
+
+</body>
+
+</html>
